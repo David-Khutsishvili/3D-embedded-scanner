@@ -125,9 +125,8 @@ flow.
 
 \subsection{Microcontroller}
 
-The scanner was controlled by an \textbf{Arduino Uno R4 WiFi}. Only its
-standard digital I/O, PWM, and I2C peripherals were used (WiFi was not
-used by the project). It was responsible for:
+The scanner was controlled by an \textbf{Arduino Uno R4 WiFi}. Using its
+standard digital I/O, PWM, and I2C peripherals. It was responsible for:
 \begin{itemize}
   \item bringing up and reading both distance sensors over I2C,
   \item driving the three servos over PWM,
@@ -142,7 +141,7 @@ Two \textbf{Adafruit VL53L1X} time-of-flight distance sensors were mounted a
 fixed distance apart (\texttt{SENSOR\_DIST}) on two static pillars, aimed
 inward toward the object. Using two sensors instead of one let the system
 sample two points on the object's surface per rotation step, and (together
-with the known sensor geometry) helped disambiguate the object's shape.
+with the known sensor geometry) helped measure the object's shape.
 
 Both sensors were identical modules and booted up at the same default I2C
 address (\texttt{0x29}), which would have made them indistinguishable on a
@@ -169,10 +168,10 @@ Unlike a design where the sensors sweep around a stationary object, this
 scanner kept the two ToF sensors \textbf{fixed} on pillars. The object
 being scanned sat on a plate that:
 \begin{enumerate}
-  \item started at maximum elevation,
+  \item started at maximum elevation
   \item rotated a full turn while the sensors sampled distances at fixed
-    angular increments (an ``elevation ring''),
-  \item was lowered by a small step,
+    angular increments (an ``elevation ring'')
+  \item was lowered by a small step
   \item repeated, rotating the opposite direction (serpentine motion) to
     avoid snapping the plate back to $0^\circ$ between rings.
 \end{enumerate}
@@ -234,17 +233,14 @@ full rotation at each elevation, reversing the rotation direction
 the plate back to $0^\circ$. This avoided wasting time and mechanical wear
 on an unnecessary reset step between rings.
 
-A measurement was only reported (and printed as a JSON line) when both
-sensors detected the object closer than \texttt{DETECTED\_THRESH\_MM}
-(Equation~\ref{eq:detect}); this filtered out background readings when the
-sensors were looking past the object at the empty scanner frame. If an
-entire ring produced no detections at all, the scan was considered complete
-and stopped early rather than continuing to sweep empty air:
-\begin{equation}
-  \text{detected} = (\overline{d_A} < T) \land (\overline{d_B} < T),
-  \qquad T = \texttt{DETECTED\_THRESH\_MM}
-  \label{eq:detect}
-\end{equation}
+A measurement was only reported (and printed as a JSON line) when
+\emph{both} sensors' average readings came back closer than the detection
+threshold, \texttt{DETECTED\_THRESH\_MM}; if either sensor's reading was
+farther than that, the point was dropped. This filtered out background
+readings when the sensors were looking past the object at the empty
+scanner frame. If an entire ring produced no detections at all, the scan
+was considered complete and stopped early rather than continuing to sweep
+empty air.
 
 Each accepted measurement was serialized as a single line of JSON:
 \begin{lstlisting}[language=,caption={Example measurement line}]
@@ -357,25 +353,6 @@ sketch's serial output, then rendered into a point cloud with
   \label{fig:results}
 \end{figure}
 
-\subsection{Observations}
-
-\begin{itemize}
-  \item The averaging and retry logic in \texttt{read\_distance()}
-    noticeably reduced spurious spikes in the point cloud compared to
-    single-shot readings taken during early testing.
-  \item Scan resolution was governed by \texttt{ROTATION\_STEP\_MAG}
-    (angular resolution) and \texttt{D\_VERTICAL}/\texttt{dh} (vertical
-    resolution); tightening these increased point cloud density at the
-    cost of scan time.
-  \item The detection threshold (\texttt{DETECTED\_THRESH\_MM}) worked well
-    for compact objects placed centrally on the plate, but was sensitive to
-    the object's size relative to the sensor spacing -- objects that did not
-    occlude both sensors at once were under-sampled.
-  \item Early-stopping on an empty ring correctly ended scans once the top
-    of taller objects (like the pear) was reached, avoiding wasted time
-    scanning past the object.
-\end{itemize}
-
 %==================================================================
 \section{Conclusion}
 %==================================================================
@@ -397,20 +374,11 @@ a system cleanly.
 
 Possible future improvements include:
 \begin{itemize}
-  \item Replacing open-loop servo timing with closed-loop position
-    feedback (e.g. rotary encoders) for more accurate and repeatable
-    angular/elevation steps.
-  \item Driving the rotation with a stepper motor or geared DC motor with
-    an encoder instead of a servo, to allow continuous full-speed
-    rotation rather than being limited to a servo's mechanical range.
-  \item Fusing the two sensors' readings more tightly (e.g. triangulating
-    a single 3D point per angle instead of two independent points) to
-    improve accuracy on asymmetric objects.
-  \item Post-processing the point cloud into a surface mesh (e.g. via
-    Poisson reconstruction) instead of only visualizing raw points.
-  \item Automatic exposure/threshold calibration at the start of a scan
-    instead of a fixed \texttt{DETECTED\_THRESH\_MM}, to better support
-    objects of varying size and reflectivity.
+  \item Adding more sensors around the plate for faster, more reliable
+    scans -- more simultaneous viewpoints would reduce the number of
+    rotation steps needed per ring and make the detection threshold less
+    sensitive to a single sensor's noise.
+  \item Post-processing the point cloud into a surface mesh instead of only visualizing raw points.
 \end{itemize}
 
 \end{document}
