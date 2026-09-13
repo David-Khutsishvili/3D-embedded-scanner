@@ -9,11 +9,6 @@ SCAN_END = "SCAN_END"
 
 
 def capture(port, baud, output_path):
-    """
-    Read scan.ino's serial output (JSON Lines, one measurement per line,
-    bracketed by SCAN_START/SCAN_END markers) and save it as a single JSON
-    array at output_path -- matching the format scanner_gui.coords() expects.
-    """
     measurements = []
     with serial.Serial(port, baud, timeout=1) as ser:
         print(f"Listening on {port} @ {baud}... waiting for {SCAN_START}")
