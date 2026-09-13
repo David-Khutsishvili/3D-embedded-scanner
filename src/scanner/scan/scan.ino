@@ -3,11 +3,11 @@
 #include <Wire.h>
 
 #define IRQ_PIN -1
-#define d_vertical_angle 4
-#define dh 1.44
-#define detected_thresh 150 // mm - MUST BE CALIBRATED; below this counts as "object detected"
+#define d_vertical_angle 1
+#define dh 0.36
+#define detected_thresh 150 // mm 
 
-const int ROTATION_STEP_MAG = 4;
+const int ROTATION_STEP_MAG = 2;
 int d_rotational_angle = ROTATION_STEP_MAG;
 
 const int SERVO1_PIN = 8;
@@ -18,7 +18,7 @@ const int MIN_PULSE_US = 500;
 const int MAX_PULSE_US = 2500;
 
 const int ZERO_ANGLE = 0;
-const int MAX_ANGLE = 180;
+const int MAX_ANGLE = 175;
 
 // reset() swings a servo across the whole 0<->180 range - that's a real,
 // slow move and needs a generous wait. A single scan step only moves a
@@ -56,13 +56,12 @@ int rotational_angle = ZERO_ANGLE;
 int scan_complete = 0;
 
 void reset() {
-  // setting the rotation to zero
-  servo3.write(ZERO_ANGLE);
-  rotational_angle = ZERO_ANGLE;
   // setting the elevtion to max
   servo1.write(MAX_ANGLE);
   servo2.write(MAX_ANGLE);
   vertical_angle = MAX_ANGLE;
+
+  servo3.write(ZERO_ANGLE);
   delay(RESET_SETTLE_MS * 10);
 }
 
@@ -162,7 +161,7 @@ int16_t read_distance(Adafruit_VL53L1X &sensor) {
 }
 
 bool measure(measurement& m, int measure_count) {
-  m.h = ((MAX_ANGLE - vertical_angle) / d_vertical_angle) * dh;
+  m.h = (MAX_ANGLE - vertical_angle) * dh;
   m.thetha = rotational_angle;
 
   long sum_a = 0;
