@@ -1,6 +1,7 @@
 #include <Servo.h>
 #include "Adafruit_VL53L1X.h"
 #include <Wire.h>
+#include "WDT.h"
 
 #define IRQ_PIN -1
 #define SERVO1_PIN 8
@@ -23,12 +24,14 @@
 #define ROTATION_STEP_MAG 2     // abs change in rotation angle
 
 #define RESET_SETTLE_MS 1000
-#define STEP_SETTLE_MS 100
+#define STEP_SETTLE_MS 125
 
 #define MEASURE_COUNT 10
 #define OUT_OF_RANGE_MM 9999
 #define DATA_READY_TIMEOUT_MS 300
 #define READ_RETRY_COUNT 3
+
+#define WDT_TIMEOUT_MS 2000  // watchdog resets the board if not fed within this
 
 struct measurement {
   int16_t dist_a;
@@ -47,6 +50,15 @@ int vertical_angle = ZERO_ANGLE;
 int rotational_angle = ZERO_ANGLE;
 int d_rotational_angle = ROTATION_STEP_MAG;
 
+void wdtDelay(unsigned long ms) {
+  while (ms > 0) {
+    unsigned long chunk = ms < 250 ? ms : 250;
+    delay(chunk);
+    WDT.refresh();
+    ms -= chunk;
+  }
+}
+
 void reset() {
   // setting the elevtion to max
   servo1.write(MAX_ANGLE);
@@ -55,7 +67,7 @@ void reset() {
 
   // setting rotation plate to zero state
   servo3.write(ZERO_ANGLE);
-  delay(RESET_SETTLE_MS * 10);
+  wdtDelay(RESET_SETTLE_MS * 10);
 }
 
 void vertical_step() {
@@ -110,6 +122,7 @@ void init_sensors() {
 }
 
 int16_t read_distance(Adafruit_VL53L1X& sensor) {
+  WDT.refresh();
   for (int attempt = 0; attempt < READ_RETRY_COUNT; attempt++) { // will attempt several readings in case of a misreading
     unsigned long wait_start = millis();
     bool ready = false;
@@ -208,6 +221,10 @@ void setup() {
   servo3.attach(SERVO3_PIN, MIN_PULSE_US, MAX_PULSE_US);
 
   init_sensors();
+
+  if (!WDT.begin(WDT_TIMEOUT_MS)) {
+    Serial.println(F("Warning: failed to start watchdog"));
+  }
 
   reset();
   scanning_routine();
