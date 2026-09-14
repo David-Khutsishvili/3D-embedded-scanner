@@ -1,0 +1,10 @@
+# Host-side Python dependencies (GUI app + CLI scripts). Python 3.10+.
+# Install into a virtual environment:
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows)   |   source .venv/bin/activate   (Linux/macOS)
+#   pip install -r requirements.txt
+numpy>=1.24
+pyserial>=3.5
+pyvista>=0.43
+pyvistaqt>=0.11
+PySide6-Essentials>=6.5
