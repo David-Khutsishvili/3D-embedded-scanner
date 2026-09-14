@@ -41,6 +41,13 @@ Context and standing decisions for AI-assisted work on this repo.
 | 10 | Git safety | Branch `gui-app` created from `main` @ `971023d`. Empty checkpoint commit `481dc70` is the revert point. | n/a |
 | 11 | Permissions | Allowed: create `code/.venv` + pip install; read `Project Guidelines (1).pdf` and `example.png` in the parent folder (read-only); local commits on `gui-app`. | n/a |
 
+## Status (2026-09-15)
+- **GUI app v1 is implemented** on local branch `gui-app`: firmware protocol, `scanner_core`, CLI wrappers, `scanner_ui` + `scanner_app.py`, README, `docs/GUI_SUMMARY.md`. All automated tests pass.
+- **Pending:**
+  - compile and flash the new `scan.ino` on the board (`arduino-cli` isn't installed on the development PC)
+  - run a real end-to-end scan from the app
+  - merge `gui-app` → `main` via a PR only when the user says so (never push without permission)
+
 ## Backlog (later, not now)
 Do these only after the GUI works end-to-end (connect, full scan control, capture, view model).
 - **Continue from stop point:** the firmware accepts a start ring with `START`, and the GUI appends to a stopped scan.
