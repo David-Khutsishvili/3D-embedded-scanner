@@ -1,6 +1,7 @@
 #include <Servo.h>
 #include "Adafruit_VL53L1X.h"
 #include <Wire.h>
+#include <string.h>
 
 #define IRQ_PIN -1
 #define SERVO1_PIN 8
@@ -30,6 +31,11 @@
 #define DATA_READY_TIMEOUT_MS 300
 #define READ_RETRY_COUNT 3
 
+#define CMD_BUFFER_SIZE 16      // max command length + null terminator
+#define CMD_PING "PING"
+#define CMD_START "START"
+#define CMD_STOP "STOP"
+
 struct measurement {
   int16_t dist_a;
   int16_t dist_b;
@@ -55,6 +61,9 @@ void reset() {
 
   // setting rotation plate to zero state
   servo3.write(ZERO_ANGLE);
+  // so the next scan starts at zero, rotating forward
+  rotational_angle = ZERO_ANGLE;
+  d_rotational_angle = ROTATION_STEP_MAG;
   delay(RESET_SETTLE_MS * 10);
 }
 
@@ -166,12 +175,80 @@ void send_data(measurement& m) {
   Serial.println("}");
 }
 
+// position where a scan was aborted, h uses the same formula as measure()
+void send_stop_point() {
+  float h = (MAX_ANGLE - vertical_angle) * dh;
+
+  Serial.print("SCAN_STOPPED {\"vertical_angle\":");
+  Serial.print(vertical_angle);
+  Serial.print(",\"theta\":");
+  Serial.print(rotational_angle);
+  Serial.print(",\"h\":");
+  Serial.print(h, 3);
+  Serial.println("}");
+}
+
+// serial command protocol (one command per line, '\r' is ignored):
+//   idle:     PING -> PONG, START -> runs a scan, STOP -> READY
+//   scanning: PING / START -> BUSY, STOP -> aborts the scan between rotation steps
+//   unknown:  WARN: unknown command <cmd>
+// READY is sent after boot and after every scan, once the platform is reset.
+// a scan sends SCAN_START, data lines, SCAN_STOPPED {...} (only if stopped), SCAN_END
+
+char cmd_buffer[CMD_BUFFER_SIZE];
+uint8_t cmd_length = 0;
+
+// non-blocking, returns true when a full command line is in cmd_buffer
+bool read_command() {
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    if (c == '\r') continue;
+
+    if (c == '\n') {
+      bool has_command = cmd_length > 0; // empty lines are ignored
+      cmd_buffer[cmd_length] = '\0';
+      cmd_length = 0;
+      if (has_command) return true;
+      continue;
+    }
+
+    // chars beyond the buffer are dropped, so an overlong line becomes an unknown command
+    if (cmd_length < CMD_BUFFER_SIZE - 1)
+      cmd_buffer[cmd_length++] = c;
+  }
+  return false;
+}
+
+bool is_command(const char* cmd) {
+  return strcmp(cmd_buffer, cmd) == 0;
+}
+
+void warn_unknown_command() {
+  Serial.print(F("WARN: unknown command "));
+  Serial.println(cmd_buffer);
+}
+
+// checked between rotation steps while scanning, returns true on STOP
+bool stop_requested() {
+  while (read_command()) {
+    if (is_command(CMD_STOP))
+      return true;
+
+    if (is_command(CMD_PING) || is_command(CMD_START))
+      Serial.println("BUSY");
+    else
+      warn_unknown_command();
+  }
+  return false;
+}
+
 //// Scaning
 
 const int ROTATION_STEPS = MAX_ANGLE / ROTATION_STEP_MAG + 1; 
 
 void scanning_routine() {
   Serial.println("SCAN_START");
+  bool stopped = false;
 
   while (ZERO_ANGLE < vertical_angle) {
     bool detected_any = false;
@@ -183,16 +260,22 @@ void scanning_routine() {
         send_data(m);
         detected_any = true;
       }
+      if (stop_requested()) { // once per step, before moving on
+        stopped = true;
+        break;
+      }
       if (i < ROTATION_STEPS - 1)
         rotational_step();
     }
 
+    if (stopped) break;
     if (!detected_any) break;
 
     d_rotational_angle *= -1; // reverse for the next ring
     vertical_step();
   }
 
+  if (stopped) send_stop_point();
   Serial.println("SCAN_END");
 }
 
@@ -210,10 +293,22 @@ void setup() {
   init_sensors();
 
   reset();
-  scanning_routine();
-  reset();
+  Serial.println("READY");
 }
 
 void loop() {
-  // nada
+  // idle, waiting for a command from the pc
+  if (!read_command()) return;
+
+  if (is_command(CMD_START)) {
+    scanning_routine();
+    reset();
+    Serial.println("READY");
+  } else if (is_command(CMD_PING)) {
+    Serial.println("PONG");
+  } else if (is_command(CMD_STOP)) {
+    Serial.println("READY"); // nothing to stop
+  } else {
+    warn_unknown_command();
+  }
 }
