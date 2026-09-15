@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+import pyvista  # noqa: F401  # must load before PySide6, or shiboken's import hook later
+# breaks pyvista's lazy plotting import (six/dateutil clash on Python 3.12)
 from PySide6.QtWidgets import QApplication
 
 from scanner_core.scan_files import default_scans_dir
