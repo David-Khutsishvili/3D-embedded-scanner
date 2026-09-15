@@ -4,8 +4,9 @@ A DIY 3D scanner built on an Arduino Uno R4 WiFi. Two time-of-flight distance
 sensors sit fixed on a pair of pillars, aimed inward at the object. The
 object itself sits on a plate that both rotates and is lowered in elevation,
 sweeping it past the sensors and tracing out a ring of distance samples. A
-small Python toolchain then turns that stream of `(theta, height, distance)`
-samples into a 3D point cloud.
+Python desktop app on the PC starts the scan, captures the stream of
+`(theta, height, distance)` samples, and reconstructs it into an interactive
+3D point cloud or surface mesh.
 
 ## How it works
 
@@ -45,10 +46,41 @@ scan stops early once a ring comes back with no detections at all — the
 object has been scanned top to bottom. Output is bracketed by `SCAN_START`
 and `SCAN_END` markers so a listener knows when a scan begins and ends.
 
+**Serial commands**
+
+After boot the Arduino resets the platform, prints `READY` and waits for
+commands from the PC (115200 baud, one command per line):
+
+| Command | Idle | While scanning |
+|---------|------|----------------|
+| `PING`  | `PONG` | `BUSY` |
+| `START` | runs a scan, then resets the platform and prints `READY` | `BUSY` |
+| `STOP`  | `READY` | aborts between rotation steps and prints `SCAN_STOPPED {"vertical_angle":…,"theta":…,"h":…}` before `SCAN_END` |
+
+**Reconstruction**
+
+The sensors face each other, so rotating the plate through ~180° covers the
+whole object. Each distance becomes a radius from the rotation axis; because
+the plate turns counter-clockwise (seen from above) as `theta` grows, points
+are rotated by `-theta` into the object's frame. The scan's rings are also
+stitched directly into a closed surface mesh. See
+[`docs/GUI_SUMMARY.md`](docs/GUI_SUMMARY.md) for the details and design
+decisions.
 
 ## Usage
 
-### 1. Flash the scanner
+### 1. Set up Python (once)
+
+Python 3.10+ is required. From the repository root:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate       # Linux / macOS
+pip install -r requirements.txt
+```
+
+### 2. Flash the scanner
 
 Wire up the two VL53L1X sensors (XSHUT on D2/D3, shared I2C on A4/A5) and the
 three servos (D8, D9, D10 — see the `#define`s at the top of `scan.ino`), then
@@ -62,38 +94,56 @@ arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:renesas_uno:unor4wifi src/scan
 
 The `Adafruit_VL53L1X` and `Servo` Arduino libraries are required.
 
-### 2. Capture a scan
+### 3. Run the desktop app
 
-With the board plugged in and running, capture its serial output to a JSON
-file of measurements:
+```bash
+python src/gui/scanner_app.py
+```
+
+- **Scan tab:** pick the scanner's serial port and connect. Once the status
+  shows *Ready*, enter a name and press **Start**. Progress and an optional
+  live 3D preview are shown while scanning; **Stop** aborts and still saves the
+  data. Scans are saved to `scans/<name>.json` plus a `scans/<name>.meta.json`
+  sidecar (status, times, stop point).
+- **Viewer tab:** select a scan to view it in 3D (drag to rotate, scroll to
+  zoom). Toggle **Points / Mesh**, **Mirror**, **Smooth**, or save a
+  **Screenshot**.
+- **No hardware?** Choose **Simulator (demo)** as the device to replay an
+  existing scan through the full Start → capture → view flow.
+
+### 4. Command-line tools (optional)
+
+Capture a scan without the GUI (handshakes with the scanner, sends `START`;
+Ctrl-C sends `STOP` and saves what was captured):
 
 ```bash
 python src/gui/capture.py scans/my_object.json --port /dev/ttyACM0
 ```
 
-This waits for the `SCAN_START` marker, collects every measurement line until
-`SCAN_END`, and writes them out as a JSON array. Interrupting with Ctrl-C
-saves whatever was captured so far.
-
-### 3. Visualize the point cloud
+Show a scan in a standalone PyVista window (`--mesh` for the surface,
+`--mirror` for the legacy mirror-image reconstruction, `--no-plot` to print
+the coordinates instead):
 
 ```bash
 python src/gui/scanner_gui.py scans/my_object.json --color "#FF8800"
 ```
 
-Each measurement's `theta`/`h`/`dist_a`/`dist_b` is converted into two 3D
-points (one per sensor) and rendered as a point cloud with PyVista. Pass
-`--no-plot` to just print the computed coordinates instead of opening a
-viewer.
+## Project layout
+
+```
+docs/                  design notes and decisions (GUI_SUMMARY.md)
+figures/               LaTeX project report
+scans/                 captured scans (*.json + *.meta.json)
+src/scanner/scan/      Arduino scan firmware (scan.ino)
+src/scanner/hardware_test/   standalone bring-up sketches
+src/gui/scanner_app.py desktop app entry point
+src/gui/scanner_ui/    PySide6 user interface
+src/gui/scanner_core/  shared protocol, capture, scan files, reconstruction
+src/gui/capture.py     CLI capture tool
+src/gui/scanner_gui.py CLI viewer
+```
 
 ## Python dependencies
 
-- `pyserial`
-- `numpy`
-- `pyvista`
-
-Install into a virtualenv with:
-
-```bash
-pip install pyserial numpy pyvista
-```
+`numpy`, `pyserial`, `pyvista`, `pyvistaqt`, `PySide6` — see
+[`requirements.txt`](requirements.txt).
